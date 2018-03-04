@@ -14,8 +14,7 @@ ui <- fluidPage(
          p("After each round press the 'Get stats for most recent game' button. This updates the individual game stats as well as the summary stats. Tables and plots at the bottom are interactive."),
          br(),
          p("IMPORTANT: If games are less than 30 seconds, enter a time manually before getting most recent stats. This is to fix a TF bug where game times <30 seconds are not logged."),
-         p("Even if gametime is between 30-35 seconds, enter 29, in case one/both players had shorter times logged."),
-         p("Our stats data will only use the manual input if time wasn't logged on TF, so this function should be used liberally.")
+         p("Even if gametime is between 30-35 seconds, enter 29 anyway, in case one/both players had shorter times logged (our stats data will only use the manual input if the Tetris Friends server has not logged the time, so doing this will not affect the accuracy of the stats).")
       ),
       mainPanel(
          h3("Player names"),
@@ -45,7 +44,7 @@ ui <- fluidPage(
                             inline = T),
          tableOutput("summary_output"),
          br(),
-         h3("Select stats to plot"),
+         h3("Select stat to plot"),
          br(),
          p("Select one stat and which rounds to plot. The triangles in the plot represent won rounds."),
          selectInput("plot_stat", "Select stat to plot:",
