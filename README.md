@@ -13,7 +13,7 @@ The app should be started at the beginning of each match. After each round, it c
   - `shiny`
   - `rvest`
   - `magrittr`
-  - You can install all three by entering `install.packages("shiny", "rvest", "magrittr")` in the R console.
+  - You can install all three by entering `install.packages("shiny", "rvest", "magrittr")` into your R console.
 
 #### To start the app, enter this into your R console:
 
