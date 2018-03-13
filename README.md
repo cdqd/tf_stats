@@ -7,15 +7,15 @@ Tetris Friends Arena (live multiplayer Tetris) currently updates aggregate playe
 The app should be started at the beginning of each match. After each round, it can scrape each player's TF profile and calculate differences -> calculate stats. Stats for the most recent round are shown, as well as interactive summary tables and plots for all the rounds logged previously. The user can also download the underlying stats for all rounds as a `.csv`.
 
 
-#### In order to run the app, you will need:
+#### You will need the following software to run the app:
 - R version 3.4.3+
 - The following packages installed for R:
   - `shiny`
   - `rvest`
   - `magrittr`
-  - You can install all three by entering `install.packages("shiny", "rvest", "magrittr")` in the R console.
+  - You can install all three by entering `install.packages("shiny", "rvest", "magrittr")` into your R console.
 
-#### To the run the app, enter this into your R console:
+#### To start the app, enter this into your R console:
 
 `shiny::runGitHub("tf_stats", "cdqd", launch.browser = T)`
 
