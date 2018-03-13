@@ -10,11 +10,10 @@ ui <- fluidPage(
     
    sidebarLayout(
       sidebarPanel(
-         p("Enter players' names and load initial stats at the start of the match only."),
+         p("Enter players' names and load initial stats at the start of the match only. If only logging one player, fill in Player 1 name and make sure Player 2 name is empty."),
          p("After each round press the 'Get stats for most recent game' button. This updates the individual game stats as well as the summary stats. Tables and plots at the bottom are interactive."),
-         br(),
-         p("IMPORTANT: If games are less than 30 seconds, enter a time manually before getting most recent stats. This is to fix a TF bug where game times <30 seconds are not logged."),
-         p("Even if gametime is between 30-35 seconds, enter 29 anyway, in case one/both players had shorter times logged (our stats data will only use the manual input if the Tetris Friends server has not logged the time, so doing this will not affect the accuracy of the stats).")
+         p(strong("IMPORTANT:"), "If games are less than 30 seconds, enter a time manually before getting most recent stats. This is to fix a TF bug where game times <30 seconds are not logged."),
+         p("Even if gametime is between 30-35 seconds, enter 29 anyway, in case one/both players had shorter times logged. Our stats data will only use the manual input if the Tetris Friends server has not logged the time, so doing this will not affect the accuracy of the stats.")
       ),
       mainPanel(
          h3("Player names"),
@@ -43,6 +42,7 @@ ui <- fluidPage(
                             selected = c("SPM", "TPM"),
                             inline = T),
          tableOutput("summary_output"),
+         tableOutput("tweighted_summary"),
          br(),
          h3("Select stat to plot"),
          br(),
@@ -63,85 +63,87 @@ ui <- fluidPage(
 # Server ----------------
 server <- function(input, output, session) {
   
-  getTFstats <- function(){
-    webpage <- read_html(values$url)
-    webpage1 <- read_html(values$url1)
-    scrape <- data.frame(1)
-    scrape1 <- data.frame(1)
-    for (i in 4:20) {
-      scrape[i - 3, ] <-
-        html_nodes(webpage,
-                   paste0("table:nth-child(", i, ")")) %>% 
-        html_text()  %>% 
-        .[length(.)]
+  getTFstats <- function() {
+    webpage <- list()
+    scrape <- list(character(17), character(17))
+    nums <- list()
+    wins <- list()
+    
+    for (k in 1:values$n_players) {
+      webpage[[k]] <- read_html(values$url[k])
       
-      scrape1[i - 3, ] <-
-        html_nodes(webpage1,
-                   paste0("table:nth-child(", i, ")")) %>% 
-        html_text()  %>% 
-        .[length(.)]
+      for (i in 4:20) {
+        scrape[[k]][i - 3] <-
+          html_nodes(webpage[[k]],
+                     paste0("table:nth-child(", i, ")")) %>% 
+          html_text()  %>% 
+          .[length(.)]
+      }
+      
+      wins[[k]] <-
+        html_nodes(webpage[[k]],
+                   paste0("table:nth-child(", 3, ")")) %>%
+        html_text() %>% .[2] %>% 
+        regmatches(gregexpr(pattern = "[0-9]+ Gold", text = .)) %>% unlist() %>% 
+        regmatches(gregexpr(pattern = "[0-9]+", text = .)) %>% unlist() %>% as.numeric()
+      
+      if (k == 1) {
+        p <- regexpr("[a-z]:|[A-Z]:| :|\\):", scrape[[k]])
+        stat_name <- c(substr(scrape[[k]], 1, p), "GOLD")
+      }
+      
+      nums[[k]] <- c(substring(scrape[[k]], p + 2), wins[[k]])
     }
     
-    p <- regexpr("[a-z]:|[A-Z]:| :|\\):", scrape[, 1])
+    snapshot <- 
+      data.frame(V1 = stat_name,
+                 V2 = nums[[1]],
+                 stringsAsFactors = F)
     
-    names <- substr(scrape[, 1], 1, p)
-    nums <- substring(scrape[, 1], p + 2)
-    nums1 <- substring(scrape1[, 1], p + 2)
+    if (values$n_players > 1) {
+      snapshot[, 3] <- nums[[2]]
+      }
     
-    wins <-
-      html_nodes(webpage,
-                 paste0("table:nth-child(", 3, ")")) %>%
-      html_text() %>% .[2] %>% 
-      regmatches(gregexpr(pattern = "[0-9]+ Gold", text = .)) %>% unlist() %>% 
-      regmatches(gregexpr(pattern = "[0-9]+", text = .)) %>% unlist() %>% as.numeric()
-    
-    wins1 <-
-      html_nodes(webpage1,
-                 paste0("table:nth-child(", 3, ")")) %>%
-      html_text() %>% .[2] %>% 
-      regmatches(gregexpr(pattern = "[0-9]+ Gold", text = .)) %>% unlist() %>% 
-      regmatches(gregexpr(pattern = "[0-9]+", text = .)) %>% unlist() %>% as.numeric()
-    
-    for(i in 1:17){
-      scrape[i, 1] <- names[i]
-      scrape[i, 2] <- nums[i]
-      scrape[i, 3] <- nums1[i]
-    }
-    
-    a <- strsplit(as.character(scrape[6, 2:3]), ":")
+    a <- strsplit(as.character(snapshot[6, -1]), ":")
     times <- numeric(0)
-    for(i in 1:2){
+    for(i in 1:values$n_players) {
       a[[i]] <- as.numeric(a[[i]])
       times[i] <- a[[i]][3] + a[[i]][2] * 60 + a[[i]][1]* (60^2)
     }
     
-    scrape[18, ] <- c("GOLD", wins, wins1)
+    snapshot[-1] <- suppressWarnings(lapply(snapshot[-1], as.numeric))
+    snapshot[6, -1] <- times
     
-    for (i in 2:3){
-      scrape[, i] <- suppressWarnings(as.numeric(scrape[, i]))
-      scrape[6, i] <- times[i - 1]   
-    }
-    
-    return(scrape)
+    return(snapshot)
   }
   
-  calc_stats <- function(){
-    df <- data.frame(Player = c(values$p1, values$p2),
-                     `Time in seconds` = c(values$diff[6, 1], values$diff[6, 2]),
-                     SPM = c(values$diff[17, 1] / values$diff[6, 1], values$diff[17, 2] / values$diff[6, 2]) * 60,
-                     TPM = c(values$diff[7, 1] / values$diff[6, 1], values$diff[7, 2] / values$diff[6, 2]) * 60,
-                     `SPM/TPM ratio` = c(values$diff[17, 1] / values$diff[7, 1], values$diff[17, 2] / values$diff[7, 2]),
-                     `T-spins` = c(values$diff[14, 1], values$diff[14, 2]),
-                     Tetrises = c(values$diff[11, 1], values$diff[11, 2]),
-                     `Total Combos` = c(values$diff[12, 1], values$diff[12, 2]),
-                     B2Bs = c(values$diff[15, 1], values$diff[15, 2]),
-                     `T-usage efficiency` = c(values$diff[14, 1] / (values$diff[7, 1] / 7), values$diff[14, 2] / (values$diff[7, 2] / 7)),
-                     `Singles` = c(values$diff[8, 1], values$diff[8, 2]),
-                     `Doubles` = c(values$diff[9, 1], values$diff[9, 2]),
-                     `Triples` = c(values$diff[10, 1], values$diff[10, 2]),
-                     `Winner` = c(values$diff[18, 1], values$diff[18, 2]),
-                     check.names = F)
-    return(df)
+  calc_stats <- function() {
+    dfs <- list()
+    
+    for(k in 1:values$n_players) {
+      dfs[[k]] <-
+        data.frame(Player = values$pn[k],
+                   `Time in seconds` = values$diff[6, k],
+                   SPM = values$diff[17, k] / values$diff[6, k] * 60,
+                   TPM = values$diff[7, k] / values$diff[6, k] * 60,
+                   `SPM/TPM ratio` = values$diff[17, k] / values$diff[7, k],
+                   `T-spins` = values$diff[14, k],
+                   Tetrises = values$diff[11, k],
+                   `Total Combos` = values$diff[12, k],
+                   B2Bs = values$diff[15, k],
+                   `T-usage efficiency` = values$diff[14, k] / (values$diff[7, k] / 7),
+                   `Singles` = values$diff[8, k],
+                   `Doubles` = values$diff[9, k],
+                   `Triples` = values$diff[10, k],
+                   `Winner` = values$diff[18, k], 
+                   check.names = F)
+    }
+    
+    if (values$n_players > 1) {
+      return(rbind(dfs[[1]], dfs[[2]]))
+    } else {
+      return(dfs[[1]])
+    }
   }
   
   add_legend <- function(...) {
@@ -158,29 +160,28 @@ server <- function(input, output, session) {
   
   observeEvent(input$initial, {
     # initialize all values
+    values$pn <- c(input$name_1, input$name_2)
+    values$n_players <- sum(values$pn != "")
+    
     values$t1 <- data.frame(NULL)
     values$ld <- data.frame(NULL)
     values$fd <- data.frame(NULL)
     
-    values$p1 <- input$name_1
-    values$p2 <- input$name_2
-    
-    values$url <- 
-      paste0("http://harddrop.com/file/tfstats.php?username=", input$name_1)
-    values$url1 <- 
-      paste0("http://harddrop.com/file/tfstats.php?username=", input$name_2)
+    values$url <- paste0("http://harddrop.com/file/tfstats.php?username=", values$pn)
     
     values$t0 <- getTFstats()
     
     output$load_msg <- renderText({
-      paste0("Initial stats for ", values$p1, " and ", values$p2, " loaded.")
+      paste0("Initial stats for ", values$pn[1], 
+             if (values$pn[2] != "") paste0(" and ", values$pn[2]), 
+             " loaded.")
     })
   })
   
   observeEvent(input$update, {
     values$t1 <- getTFstats()
-    values$diff <- values$t1[, -1] - values$t0[, -1]
-    if(any(values$diff[6, ] == 0)){
+    values$diff <- values$t1[-1] - values$t0[-1]
+    if (any(values$diff[6, ] == 0)) {
       values$diff[6, ] <- 
         values$diff[6, ] + as.numeric(values$diff[6, ] == 0) * input$manual_time
     }
@@ -188,42 +189,50 @@ server <- function(input, output, session) {
     values$ld <- calc_stats()
     
     fd_0 <- rbind(values$fd, 
-                  cbind(values$ld, data.frame(game = c(1, 1))))
-    fd_0$game <- rep(1:(nrow(fd_0)/2), each = 2)
+                  cbind(values$ld, 
+                        data.frame(game = 
+                          if (values$n_players == 1) {nrow(values$fd) + 1
+                          } else {
+                            rep((nrow(values$fd) / 2 + 1), each = 2)}
+                          )))
     values$fd <- fd_0
     
     values$last <- as.data.frame(t(values$ld), stringsAsFactors = F)
     values$last$Player <- row.names(values$last)
     names(values$last) <- (values$last[1, ])
-    values$last <- values$last[-1, c(3, 1, 2)]
-    
-    output$stats_output <- renderTable(
-      {values$last}
-    )
+    values$last <- values$last[-1, c(length(values$last), 1:values$n_players)]
     
     values$t0 <- values$t1
     updateNumericInput(session, "manual_time", value = 0)
   })
-
+  
+  output$stats_output <- renderTable({
+    if (nrow(values$ld) == 0) {
+      return(NULL)
+    } else return(values$last)
+  }, align = "c")
+  
   output$summary_output <- renderTable({
-    # if(values$on == 0) data.frame(NULL)
-     # else if(nrow(values$fd) == 0) data.frame(NULL)
-    if(nrow(values$fd) == 0) return(NULL)
-     else {
+    if (nrow(values$fd) == 0) {
+      return(NULL)
+      } else {
        mins <- aggregate(values$fd[, input$summary_vars], list(Player = values$fd$Player), min, na.rm = T)
        names(mins)[-1] <- 
-         if(length(input$summary_vars) == 1) paste0("Min ", input$summary_vars) 
-         else paste0("Min ", names(mins)[-1])
+         if (length(input$summary_vars) == 1) {
+           paste0("Min ", input$summary_vars) 
+           } else paste0("Min ", names(mins)[-1])
        
        means <- aggregate(values$fd[, input$summary_vars], list(Player = values$fd$Player), mean, na.rm = T)
        names(means)[-1] <- 
-         if(length(input$summary_vars) == 1) paste0("Mean ", input$summary_vars) 
-         else paste0("Mean ", names(means)[-1])
+         if (length(input$summary_vars) == 1) {
+           paste0("Mean ", input$summary_vars)
+           } else paste0("Mean ", names(means)[-1])
        
        maxs <- aggregate(values$fd[, input$summary_vars], list(Player = values$fd$Player), max, na.rm = T)
        names(maxs)[-1] <- 
-         if(length(input$summary_vars) == 1) paste0("Max ", input$summary_vars)
-         else paste0("Max ", names(maxs)[-1])
+         if (length(input$summary_vars) == 1) {
+           paste0("Max ", input$summary_vars)
+           } else paste0("Max ", names(maxs)[-1])
        
        wintot <- aggregate(values$fd[, "Winner"], list(Player = values$fd$Player), sum, na.rm = T)
        names(wintot)[-1] <- "Wins"
@@ -237,8 +246,31 @@ server <- function(input, output, session) {
                                     1 + regexpr(" ", names(summ)[-(1:2)]))))]
        )
        }
-    }
-  )
+    }, align = "c")
+  
+  output$tweighted_summary <- renderTable({
+    if (nrow(values$fd) == 0) {
+      return(NULL)
+      } else {
+        tw <- list() 
+        for(k in 1:values$n_players) {
+          tw[[k]] <-
+            data.frame(Player = values$pn[k],
+                       `Time-weighted Mean SPM` = 
+                         weighted.mean(values$fd$SPM[values$fd$Player == values$pn[k]],
+                                       values$fd$`Time in seconds`[values$fd$Player == values$pn[k]]),
+                       `Time-weighted Mean TPM` = 
+                         weighted.mean(values$fd$TPM[values$fd$Player == values$pn[k]],
+                                       values$fd$`Time in seconds`[values$fd$Player == values$pn[k]]),
+                       check.names = F)
+        }
+        if (values$n_players > 1) {
+          return(rbind(tw[[1]], tw[[2]]))
+        } else {
+          return(tw[[1]])
+        }
+      }
+  }, align = "c")
   
   output$games <- renderText(
     {paste0("Rounds played so far: ", max(values$fd$game, 0))}
@@ -246,7 +278,9 @@ server <- function(input, output, session) {
   
   output$downloadData <- downloadHandler(
     filename = function() {
-      paste0(as.Date(Sys.time()), "_", values$p1, "_", values$p2, ".csv")
+      paste0(as.Date(Sys.time()), "_", values$pn[1], 
+             if (values$pn[2] != "") paste0("_", values$pn[2]), 
+             ".csv")
     },
     content = function(file) {
       write.csv(values$fd, file, row.names = FALSE)
@@ -254,29 +288,33 @@ server <- function(input, output, session) {
   )
   
   output$summary_plot <- renderPlot({
-    if(nrow(values$fd) == 0) return(NULL)
-    else{
-    min_round <- min(input$plot_rounds[1], max(values$fd$game))
-    max_round <- min(input$plot_rounds[2], max(values$fd$game))
-    
-    testplot <- values$fd[values$fd$game >= min_round & values$fd$game <= max_round, ]
-    
-    plot(1
-         , type = "n", main = paste0(input$plot_stat)
-         , xlab = "Round"
-         , ylab = paste0(input$plot_stat)
-         , xlim = c(min(testplot$game), 
-                    max(testplot$game))
-         # , xaxt = "n"
-         , ylim = c(min(testplot[, input$plot_stat]), max(testplot[, input$plot_stat]))
-    )
-    lines(x = testplot$game[testplot$Player == values$p1], y = testplot[, input$plot_stat][testplot$Player == values$p1], col = "red")
-    lines(x = testplot$game[testplot$Player == values$p2], y = testplot[, input$plot_stat][testplot$Player == values$p2], col = "blue")
-    points(x = testplot$game[testplot$Player == values$p1 & testplot$Winner == 1],
-           y = testplot[, input$plot_stat][testplot$Player == values$p1 & testplot$Winner == 1], pch = 24, col = "red", bg = "red", cex = 1.2)
-    points(x = testplot$game[testplot$Player == values$p2 & testplot$Winner == 1],
-           y = testplot[, input$plot_stat][testplot$Player == values$p2 & testplot$Winner == 1], pch = 24, col = "blue", bg = "blue", cex = 1.2)
-    add_legend("topright", bty = "n", legend = c(values$p1, values$p2), lty = c(1, 1), col = c("red", "blue"))
+    if (nrow(values$fd) == 0) {
+      return(NULL)
+      } else{
+          min_round <- min(input$plot_rounds[1], max(values$fd$game))
+          max_round <- min(input$plot_rounds[2], max(values$fd$game))
+          
+          testplot <- values$fd[values$fd$game >= min_round & values$fd$game <= max_round, ]
+          
+          plot(1
+               , type = "n", main = paste0(input$plot_stat)
+               , xlab = "Round"
+               , ylab = paste0(input$plot_stat)
+               , xlim = c(min(testplot$game), 
+                          max(testplot$game))
+               , ylim = c(min(testplot[, input$plot_stat]), max(testplot[, input$plot_stat]))
+          )
+          lines(x = testplot$game[testplot$Player == values$pn[1]], y = testplot[, input$plot_stat][testplot$Player == values$pn[1]], col = "red")
+          points(x = testplot$game[testplot$Player == values$pn[1] & testplot$Winner == 1],
+                 y = testplot[, input$plot_stat][testplot$Player == values$pn[1] & testplot$Winner == 1], pch = 24, col = "red", bg = "red", cex = 1.2)
+          
+          if (values$pn[2] != "") {
+          lines(x = testplot$game[testplot$Player == values$pn[2]], y = testplot[, input$plot_stat][testplot$Player == values$pn[2]], col = "blue")
+          points(x = testplot$game[testplot$Player == values$pn[2] & testplot$Winner == 1],
+                 y = testplot[, input$plot_stat][testplot$Player == values$pn[2] & testplot$Winner == 1], pch = 24, col = "blue", bg = "blue", cex = 1.2)
+          add_legend("topright", bty = "n", 
+                     legend = c(values$pn[1], values$pn[2]), lty = c(1, 1), col = c("red", "blue"))
+          }
     }
   })
 }
