@@ -65,20 +65,22 @@ server <- function(input, output, session) {
   
   getTFstats <- function() {
     webpage <- list()
-    scrape <- list(character(17), character(17))
+    scrape <- list()
     nums <- list()
     wins <- list()
     
     for (k in 1:values$n_players) {
       webpage[[k]] <- read_html(values$url[k])
       
+      temp <- character(0)
       for (i in 4:20) {
-        scrape[[k]][i - 3] <-
+        temp[i - 3] <-
           html_nodes(webpage[[k]],
                      paste0("table:nth-child(", i, ")")) %>% 
           html_text()  %>% 
           .[length(.)]
       }
+      scrape[[k]] <- temp
       
       wins[[k]] <-
         html_nodes(webpage[[k]],
