@@ -129,14 +129,14 @@ server <- function(input, output, session) {
                    SPM = values$diff[17, k] / values$diff[6, k] * 60,
                    TPM = values$diff[7, k] / values$diff[6, k] * 60,
                    `SPM/TPM ratio` = values$diff[17, k] / values$diff[7, k],
-                   `T-spins` = values$diff[14, k],
-                   Tetrises = values$diff[11, k],
-                   `Total Combos` = values$diff[12, k],
-                   B2Bs = values$diff[15, k],
+                   `T-spins/min` = values$diff[14, k] / values$diff[6, k] * 60,
+                   `Tetrises/min` = values$diff[11, k] / values$diff[6, k] * 60,
+                   `Total Combos/min` = values$diff[12, k] / values$diff[6, k] * 60,
+                   `B2Bs/min` = values$diff[15, k] / values$diff[6, k] * 60,
                    `T-usage efficiency` = values$diff[14, k] / (values$diff[7, k] / 7),
-                   `Singles` = values$diff[8, k],
-                   `Doubles` = values$diff[9, k],
-                   `Triples` = values$diff[10, k],
+                   `Singles/min` = values$diff[8, k] / values$diff[6, k] * 60,
+                   `Doubles/min` = values$diff[9, k] / values$diff[6, k] * 60,
+                   `Triples/min` = values$diff[10, k] / values$diff[6, k] * 60,
                    `Winner` = values$diff[18, k], 
                    check.names = F)
     }
@@ -199,11 +199,13 @@ server <- function(input, output, session) {
                           )))
     values$fd <- fd_0
     
+    # prepare formatting for most recent game comparison table
     values$last <- as.data.frame(t(values$ld), stringsAsFactors = F)
     values$last$Player <- row.names(values$last)
     names(values$last) <- (values$last[1, ])
     values$last <- values$last[-1, c(length(values$last), 1:values$n_players)]
-    
+    values$last[-1] <- lapply(values$last[-1], function(x) {sprintf("%.2f", x)})
+     
     values$t0 <- values$t1
     updateNumericInput(session, "manual_time", value = 0)
   })
