@@ -204,7 +204,7 @@ server <- function(input, output, session) {
     values$last$Player <- row.names(values$last)
     names(values$last) <- (values$last[1, ])
     values$last <- values$last[-1, c(length(values$last), 1:values$n_players)]
-    values$last[-1] <- lapply(values$last[-1], function(x) {sprintf("%.2f", x)})
+    # values$last[-1] <- lapply(values$last[-1], function(x) {sprintf("%.2f", x)})
      
     values$t0 <- values$t1
     updateNumericInput(session, "manual_time", value = 0)
