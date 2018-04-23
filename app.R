@@ -36,9 +36,9 @@ ui <- fluidPage(
          br(),
          checkboxGroupInput("summary_vars", "Stats to show:",
                             c("SPM", "TPM", "SPM/TPM ratio", 
-                              "T-spins", "Tetrises", "Total Combos",
-                              "B2Bs", "T-usage efficiency", "Singles",
-                              "Doubles", "Triples"),
+                              "T-spins/min", "Tetrises/min", "Total Combos/min",
+                              "B2Bs/min", "T-usage efficiency", "Singles/min",
+                              "Doubles/min", "Triples/min"),
                             selected = c("SPM", "TPM"),
                             inline = T),
          tableOutput("summary_output"),
@@ -49,9 +49,9 @@ ui <- fluidPage(
          p("Select one stat and which rounds to plot. The triangles in the plot represent won rounds."),
          selectInput("plot_stat", "Select stat to plot:",
                      c("SPM", "TPM", "SPM/TPM ratio", 
-                       "T-spins", "Tetrises", "Total Combos",
-                       "B2Bs", "T-usage efficiency", "Singles",
-                       "Doubles", "Triples"),
+                       "T-spins/min", "Tetrises/min", "Total Combos/min",
+                       "B2Bs/min", "T-usage efficiency", "Singles/min",
+                       "Doubles/min", "Triples/min"),
                      selected = c("SPM")),
          sliderInput("plot_rounds", "Select rounds to plot:",
                      min = 1, max = 50, value = c(1, 50)),
@@ -204,7 +204,8 @@ server <- function(input, output, session) {
     values$last$Player <- row.names(values$last)
     names(values$last) <- (values$last[1, ])
     values$last <- values$last[-1, c(length(values$last), 1:values$n_players)]
-    # values$last[-1] <- lapply(values$last[-1], function(x) {sprintf("%.2f", x)})
+    values$last[-1] <- lapply(values$last[-1], function(x) {round(as.numeric(x), 2)})
+    # values$last[-1] <- lapply(values$last[-1], function(x) {sprintf("%.2f", as.numeric(x))})
      
     values$t0 <- values$t1
     updateNumericInput(session, "manual_time", value = 0)
