@@ -35,14 +35,17 @@ ui <- fluidPage(
          textOutput("games"),
          br(),
          checkboxGroupInput("summary_vars", "Stats to show:",
-                            c("SPM", "TPM", "SPM/TPM ratio", 
-                              "T-spins/min", "Tetrises/min", "Total Combos/min",
-                              "B2Bs/min", "T-usage efficiency", "Singles/min",
+                            c("SPM", "TPM", "T-spins/min", 
+                              "Tetrises/min", "Total Combos/min",
+                              "B2Bs/min", "Singles/min",
                               "Doubles/min", "Triples/min"),
                             selected = c("SPM", "TPM"),
                             inline = T),
          tableOutput("summary_output"),
-         tableOutput("tweighted_summary"),
+         p("Efficiency stats:"),
+         tableOutput("efc_summary"),
+         p("Per game averages:"),
+         tableOutput("supp_summary"),
          br(),
          h3("Select stat to plot"),
          br(),
@@ -62,7 +65,7 @@ ui <- fluidPage(
 
 # Server ----------------
 server <- function(input, output, session) {
-  
+  # Functions -------------
   getTFstats <- function() {
     webpage <- list()
     scrape <- list()
@@ -128,24 +131,20 @@ server <- function(input, output, session) {
                    `Time in seconds` = values$diff[6, k],
                    SPM = values$diff[17, k] / values$diff[6, k] * 60,
                    TPM = values$diff[7, k] / values$diff[6, k] * 60,
-                   `SPM/TPM ratio` = values$diff[17, k] / values$diff[7, k],
                    `T-spins/min` = values$diff[14, k] / values$diff[6, k] * 60,
                    `Tetrises/min` = values$diff[11, k] / values$diff[6, k] * 60,
                    `Total Combos/min` = values$diff[12, k] / values$diff[6, k] * 60,
                    `B2Bs/min` = values$diff[15, k] / values$diff[6, k] * 60,
-                   `T-usage efficiency` = values$diff[14, k] / (values$diff[7, k] / 7),
                    `Singles/min` = values$diff[8, k] / values$diff[6, k] * 60,
                    `Doubles/min` = values$diff[9, k] / values$diff[6, k] * 60,
                    `Triples/min` = values$diff[10, k] / values$diff[6, k] * 60,
+                   `SPM/TPM ratio` = values$diff[17, k] / values$diff[7, k],
+                   `T-usage efficiency` = values$diff[14, k] / (values$diff[7, k] / 7),
                    `Winner` = values$diff[18, k], 
                    check.names = F)
     }
     
-    if (values$n_players > 1) {
-      return(rbind(dfs[[1]], dfs[[2]]))
-    } else {
-      return(dfs[[1]])
-    }
+    return(do.call(rbind, dfs))
   }
   
   add_legend <- function(...) {
@@ -156,6 +155,7 @@ server <- function(input, output, session) {
     legend(...)
   }
   
+  # Core server code ----------------
   values <- reactiveValues(t1 = data.frame(NULL),
                            ld = data.frame(NULL),
                            fd = data.frame(NULL))
@@ -199,13 +199,14 @@ server <- function(input, output, session) {
                           )))
     values$fd <- fd_0
     
-    # prepare formatting for most recent game comparison table
+    # Prepare formatting for most recent game comparison table --
+    
     values$last <- as.data.frame(t(values$ld), stringsAsFactors = F)
     values$last$Player <- row.names(values$last)
     names(values$last) <- (values$last[1, ])
     values$last <- values$last[-1, c(length(values$last), 1:values$n_players)]
+    # round all numbers to 2 dp
     values$last[-1] <- lapply(values$last[-1], function(x) {round(as.numeric(x), 2)})
-    # values$last[-1] <- lapply(values$last[-1], function(x) {sprintf("%.2f", as.numeric(x))})
      
     values$t0 <- values$t1
     updateNumericInput(session, "manual_time", value = 0)
@@ -221,19 +222,33 @@ server <- function(input, output, session) {
     if (nrow(values$fd) == 0) {
       return(NULL)
       } else {
-       mins <- aggregate(values$fd[, input$summary_vars], list(Player = values$fd$Player), min, na.rm = T)
+      # Create min, max, mean stats as separate tables --
+       mins <- aggregate(values$fd[, input$summary_vars], 
+                         list(Player = values$fd$Player), 
+                         min, na.rm = T)
        names(mins)[-1] <- 
          if (length(input$summary_vars) == 1) {
            paste0("Min ", input$summary_vars) 
            } else paste0("Min ", names(mins)[-1])
        
-       means <- aggregate(values$fd[, input$summary_vars], list(Player = values$fd$Player), mean, na.rm = T)
+       # Design decision: The main summary table will show the time-weighted means
+       tweight <- numeric(nrow(values$fd))
+       for (i in 1:values$n_players) {
+         tweight[values$fd$Player == values$pn[i]] <-
+           sum(values$fd$Time[values$fd$Player == values$pn[i]], na.rm = T)
+       }
+       means <- aggregate(values$fd[, input$summary_vars] * 
+                            (values$fd$`Time in seconds` / tweight), 
+                          list(Player = values$fd$Player), 
+                          sum, na.rm = T)
        names(means)[-1] <- 
          if (length(input$summary_vars) == 1) {
            paste0("Mean ", input$summary_vars)
            } else paste0("Mean ", names(means)[-1])
        
-       maxs <- aggregate(values$fd[, input$summary_vars], list(Player = values$fd$Player), max, na.rm = T)
+       maxs <- aggregate(values$fd[, input$summary_vars], 
+                         list(Player = values$fd$Player), 
+                         max, na.rm = T)
        names(maxs)[-1] <- 
          if (length(input$summary_vars) == 1) {
            paste0("Max ", input$summary_vars)
@@ -242,9 +257,12 @@ server <- function(input, output, session) {
        wintot <- aggregate(values$fd[, "Winner"], list(Player = values$fd$Player), sum, na.rm = T)
        names(wintot)[-1] <- "Wins"
        
+       # Merge min, max, mean tables for final display --
        summ <- merge(merge(mins, means), maxs)
        summ <- merge(summ, wintot)
        summ <- summ[, c(1, length(summ), 2:(length(summ)-1))]
+       
+       # Return table required order; Name of Player and Wins first, then stats
        return(
        summ[, c(1:2, 
                 2 + order(substring(names(summ)[-(1:2)],
@@ -253,27 +271,52 @@ server <- function(input, output, session) {
        }
     }, align = "c")
   
-  output$tweighted_summary <- renderTable({
+  # Summary stats for efficiency shown separately as a different denominator is used
+  output$efc_summary <- renderTable({
+    if (nrow(values$fd) == 0) {
+      return(NULL)
+    } else {
+      efc <- list() 
+      for(k in 1:values$n_players) {
+        values$tmp <- values$fd[values$fd$Player == values$pn[k], ]
+        efc[[k]] <-
+          data.frame(Player = values$pn[k],
+                     `Min SPM/TPM` = 
+                       min(values$tmp$`SPM/TPM ratio`),
+                     `Mean SPM/TPM` =
+                       sum(values$tmp$`SPM` * (values$tmp$`Time in seconds` / 60)) / 
+                       sum(values$tmp$`TPM` * (values$tmp$`Time in seconds` / 60)),
+                     `Max SPM/TPM` = 
+                       max(values$tmp$`SPM/TPM ratio`),
+                     `Min T-usage` = 
+                       min(values$tmp$`T-usage efficiency`),
+                     `Mean T-usage` =
+                       sum(values$tmp$`T-spins/min` * (values$tmp$`Time in seconds` / 60)) / 
+                       (sum(values$tmp$`TPM` * (values$tmp$`Time in seconds` / 60)) / 7),
+                     `Max T-usage` = 
+                       max(values$tmp$`T-usage efficiency`),
+                     check.names = F)
+      }
+      return(do.call(rbind, efc))
+    }
+  }, align = "c")
+  
+  output$supp_summary <- renderTable({
     if (nrow(values$fd) == 0) {
       return(NULL)
       } else {
-        tw <- list() 
+        # Design decision: Un-timeweighted stats will be shown for APM and TPM as well
+        supp <- list() 
         for(k in 1:values$n_players) {
-          tw[[k]] <-
+          supp[[k]] <-
             data.frame(Player = values$pn[k],
-                       `Time-weighted Mean SPM` = 
-                         weighted.mean(values$fd$SPM[values$fd$Player == values$pn[k]],
-                                       values$fd$`Time in seconds`[values$fd$Player == values$pn[k]]),
-                       `Time-weighted Mean TPM` = 
-                         weighted.mean(values$fd$TPM[values$fd$Player == values$pn[k]],
-                                       values$fd$`Time in seconds`[values$fd$Player == values$pn[k]]),
+                       `Mean SPM per round` = 
+                         mean(values$fd$SPM[values$fd$Player == values$pn[k]]),
+                       `Mean TPM per round` = 
+                         mean(values$fd$TPM[values$fd$Player == values$pn[k]]),
                        check.names = F)
         }
-        if (values$n_players > 1) {
-          return(rbind(tw[[1]], tw[[2]]))
-        } else {
-          return(tw[[1]])
-        }
+        return(do.call(rbind, supp))
       }
   }, align = "c")
   
