@@ -42,9 +42,9 @@ ui <- fluidPage(
                             selected = c("SPM", "TPM"),
                             inline = T),
          tableOutput("summary_output"),
-         p("Efficiency stats:"),
+         p(strong("Efficiency stats:")),
          tableOutput("efc_summary"),
-         p("Per game averages:"),
+         p(strong("Per round averages:")),
          tableOutput("supp_summary"),
          br(),
          h3("Select stat to plot"),
@@ -278,23 +278,23 @@ server <- function(input, output, session) {
     } else {
       efc <- list() 
       for(k in 1:values$n_players) {
-        values$tmp <- values$fd[values$fd$Player == values$pn[k], ]
+        tmp <- values$fd[values$fd$Player == values$pn[k], ]
         efc[[k]] <-
           data.frame(Player = values$pn[k],
                      `Min SPM/TPM` = 
-                       min(values$tmp$`SPM/TPM ratio`),
+                       min(tmp$`SPM/TPM ratio`),
                      `Mean SPM/TPM` =
-                       sum(values$tmp$`SPM` * (values$tmp$`Time in seconds` / 60)) / 
-                       sum(values$tmp$`TPM` * (values$tmp$`Time in seconds` / 60)),
+                       sum(tmp$`SPM` * (tmp$`Time in seconds` / 60)) / 
+                       sum(tmp$`TPM` * (tmp$`Time in seconds` / 60)),
                      `Max SPM/TPM` = 
-                       max(values$tmp$`SPM/TPM ratio`),
+                       max(tmp$`SPM/TPM ratio`),
                      `Min T-usage` = 
-                       min(values$tmp$`T-usage efficiency`),
+                       min(tmp$`T-usage efficiency`),
                      `Mean T-usage` =
-                       sum(values$tmp$`T-spins/min` * (values$tmp$`Time in seconds` / 60)) / 
-                       (sum(values$tmp$`TPM` * (values$tmp$`Time in seconds` / 60)) / 7),
+                       sum(tmp$`T-spins/min` * (tmp$`Time in seconds` / 60)) / 
+                       (sum(tmp$`TPM` * (tmp$`Time in seconds` / 60)) / 7),
                      `Max T-usage` = 
-                       max(values$tmp$`T-usage efficiency`),
+                       max(tmp$`T-usage efficiency`),
                      check.names = F)
       }
       return(do.call(rbind, efc))
